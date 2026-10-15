@@ -25,7 +25,12 @@
 
 set -u
 
-: "${ST_BIN:=/root/PowerInfer/smallthinker/build-clang18/bin/llama-server}"
+# Resolve the deploy root (parent of bin/) so the default binary path works
+# no matter where this repository is checked out.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_ROOT="$(dirname "${SCRIPT_DIR}")"
+
+: "${ST_BIN:=${DEPLOY_ROOT}/runtime/bin/llama-server}"
 : "${ST_MODEL:=/root/models/gguf/Qwen3-30B-A3B-abliterated.Q6_K.gguf}"
 : "${ST_MODEL_ID:=qwen3-30b-a3b-abliterated}"
 : "${ST_PORT:=8321}"

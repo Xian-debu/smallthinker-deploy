@@ -51,8 +51,20 @@ chmod +x bin/smallthinker-ctl scripts/*.sh
 ./scripts/build-engine.sh
 ```
 
-构建产物位于 `third_party/PowerInfer/build/bin/llama-server`（默认）。脚本会克隆
+构建产物位于 `third_party/PowerInfer/build/bin/llama-server`。脚本会克隆
 `Tiiny-AI/PowerInfer` 并固定到实测过的 commit `8bd56d6`。
+
+构建完成后，把二进制复制到仓库内的运行时目录（`runtime/` 已被
+`.gitignore` 忽略，不会污染仓库；ctl 默认从该目录加载二进制）：
+
+```bash
+mkdir -p runtime/bin
+cp third_party/PowerInfer/build/bin/llama-server runtime/bin/
+```
+
+> 磁盘紧张？确认 `runtime/bin/llama-server` 可运行后，可以整目录删除
+> `third_party/`（引擎源码 + 构建中间文件，约 300 MiB）以节省空间，
+> 运行时只依赖 `runtime/bin/llama-server` 和模型文件本身。
 
 ### 2. 下载模型
 
@@ -64,10 +76,11 @@ chmod +x bin/smallthinker-ctl scripts/*.sh
 
 ### 3. 配置并启动
 
-编辑 `bin/smallthinker-ctl` 顶部的默认路径，或通过环境变量覆盖：
+`bin/smallthinker-ctl` 默认从 `runtime/bin/llama-server` 加载二进制（路径由脚本
+根据自身位置自动推导，仓库移到任何目录都无需改代码）。只需通过环境变量
+指定模型文件：
 
 ```bash
-export ST_BIN="$PWD/third_party/PowerInfer/build/bin/llama-server"
 export ST_MODEL="$HOME/models/Qwen3-30B-A3B-abliterated.Q6_K.gguf"
 export ST_MODEL_ID="qwen3-30b-a3b-abliterated"
 export ST_PORT=8321
@@ -76,6 +89,10 @@ export ST_CTX=131072
 bin/smallthinker-ctl start
 bin/smallthinker-ctl status
 ```
+
+> 如果你没有复制二进制到 `runtime/bin/`，可以用
+> `export ST_BIN="$PWD/third_party/PowerInfer/build/bin/llama-server"` 覆盖。
+> 其他可覆盖项见脚本头部的 `ST_*` 注释。
 
 ### 4. 验证
 

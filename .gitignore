@@ -20,6 +20,9 @@ dist/
 models/
 *.part
 
+# ---- 本地运行时二进制（不随仓库分发，由 build-engine.sh 构建后复制）----
+runtime/
+
 # ---- 编辑器 / 系统 ----
 .vscode/
 .idea/
