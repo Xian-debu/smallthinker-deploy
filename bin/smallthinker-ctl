@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# smallthinker-ctl — control the SmallThinker (PowerInfer sparse-MoE) engine
+#
+#   Serves a Qwen3-30B-A3B abliterated GGUF model through llama-server's
+#   OpenAI-compatible /v1 API on a single CPU machine (no GPU required).
+#
+# Usage:
+#   smallthinker-ctl {start|stop|status|restart} [port]
+#
+# Configuration via environment variables (defaults reflect the tested setup
+# described in README.md — override as needed on other machines):
+#   ST_BIN       path to llama-server binary
+#   ST_MODEL     path to the GGUF model file
+#   ST_MODEL_ID  model id exposed via /v1/models
+#   ST_PORT      listening port (default 8321; can also be passed as 2nd arg)
+#   ST_CTX       context window size in tokens (default 131072, YaRN-extended)
+#   ST_THREADS   CPU threads for generation (default 8)
+#   ST_TB        batch size for prompt processing (default 16)
+#   ST_UB        micro-batch size for prompt processing (default 512)
+#   ST_LOG       log file path
+#   ST_PID       pid file path
+#
+# Local loopback traffic MUST bypass the HTTP proxy: otherwise curl sends
+# 127.0.0.1:8321 to the upstream proxy and is_up() never succeeds.
+
+set -u
+
+: "${ST_BIN:=/root/PowerInfer/smallthinker/build-clang18/bin/llama-server}"
+: "${ST_MODEL:=/root/models/gguf/Qwen3-30B-A3B-abliterated.Q6_K.gguf}"
+: "${ST_MODEL_ID:=qwen3-30b-a3b-abliterated}"
+: "${ST_PORT:=8321}"
+PORT="${2:-${ST_PORT}}"
+: "${ST_CTX:=131072}"
+: "${ST_THREADS:=8}"
+: "${ST_TB:=16}"
+: "${ST_UB:=512}"
+: "${ST_LOG:=/root/smallthinker-run.log}"
+: "${ST_PID:=/tmp/smallthinker-server.pid}"
+
+HEALTH_URL="http://127.0.0.1:${PORT}/v1/models"
+PID_PATTERN="${ST_BIN}"
+
+# Bypass any system proxy for loopback traffic (mihomo / proxy-hub / clash ...).
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY 2>/dev/null
+export no_proxy="127.0.0.1,localhost,::1"
+export NO_PROXY="${no_proxy}"
+
+stop_sm() {
+    local pids
+    pids=$(pgrep -f "${PID_PATTERN}")
+    if [ -n "$pids" ]; then kill $pids 2>/dev/null; sleep 2; fi
+    pids=$(pgrep -f "${PID_PATTERN}")
+    if [ -n "$pids" ]; then kill -9 $pids 2>/dev/null; sleep 1; fi
+}
+
+is_up() {
+    curl -s --noproxy '*' --max-time 3 "${HEALTH_URL}" 2>/dev/null | grep -q '"object".*"list"'
+}
+
+print_status() {
+    curl -s --noproxy '*' --max-time 5 "${HEALTH_URL}" 2>/dev/null | head -c 600
+    echo
+}
+
+case "$1" in
+    start)
+        if is_up; then
+            echo "SmallThinker already up on :${PORT}"
+            print_status
+            exit 0
+        fi
+        stop_sm
+        echo "Starting llama-server (${ST_MODEL_ID}, ctx ${ST_CTX}, -t ${ST_THREADS} -tb ${ST_TB} -ub ${ST_UB})..."
+        nohup "${ST_BIN}" \
+            -m "${ST_MODEL}" --alias "${ST_MODEL_ID}" \
+            --host 127.0.0.1 --port "${PORT}" \
+            -t "${ST_THREADS}" -tb "${ST_TB}" -ub "${ST_UB}" \
+            -c "${ST_CTX}" -b 2048 \
+            --rope-scaling yarn --yarn-orig-ctx 40960 \
+            -ctk q8_0 -ctv q8_0 --flash-attn \
+            --temp 0.7 --top-p 0.9 --top-k 20 \
+            --no-webui \
+            > "${ST_LOG}" 2>&1 &
+        echo $! > "${ST_PID}"
+        echo "Waiting for model load (23.37 GiB, ~35-60s)..."
+        for i in $(seq 1 70); do
+            sleep 3
+            if is_up; then
+                echo "SmallThinker up after ~$((i*3))s on :${PORT}"
+                print_status
+                exit 0
+            fi
+            if ! pgrep -f "${PID_PATTERN}" >/dev/null 2>&1; then
+                echo "ERROR: process exited — tail ${ST_LOG}"
+                tail -25 "${ST_LOG}" 2>/dev/null
+                exit 1
+            fi
+            if [ $((i % 10)) -eq 0 ]; then echo "  ... loading ($((i*3))s)"; fi
+        done
+        echo "ERROR: not ready after 210s — check ${ST_LOG}"
+        tail -25 "${ST_LOG}" 2>/dev/null
+        exit 1
+        ;;
+    stop)
+        stop_sm
+        echo "SmallThinker stopped (:${PORT} released, memory freed)"
+        ;;
+    status)
+        if is_up; then
+            print_status
+        else
+            echo "Stopped (:${PORT} not responding)"
+        fi
+        ;;
+    restart)
+        "$0" stop
+        sleep 3
+        "$0" start "$PORT"
+        ;;
+    *)
+        echo "Usage: smallthinker-ctl {start|stop|status|restart} [port]"
+        exit 1
+        ;;
+esac

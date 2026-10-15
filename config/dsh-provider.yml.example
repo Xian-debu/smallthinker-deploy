@@ -1,0 +1,31 @@
+# DSH (DeepSeek Harness) provider integration
+#
+# This repository's SmallThinker instance can be registered in DSH's local AI
+# provider list so it appears alongside cloud providers in the web UI.
+#
+# Location of the runtime config:
+#   /root/.dsh/profiles/web/cordis.patch.yml
+#
+# Steps:
+#   1. Back up the file first:  cp cordis.patch.yml cordis.patch.yml.bak
+#   2. Insert this block at the top level of the "providers:" mapping
+#      (two-space indentation, same level as any other provider such as
+#      holo3.1 / model / ollama).
+#   3. Validate the YAML (DSH uses !!js tags; a SafeLoader with the
+#      'tag:yaml.org,2002:js' multi-constructor parses it — plain yaml.safe_load
+#      fails on the !!js expressions elsewhere in the file).
+#   4. Restart DSH web:  systemctl restart dsh-web.service
+#   5. The model appears as "Qwen3 30B A3B Abliterated（本地 SmallThinker）"
+#      — start the engine first with:  smallthinker-ctl start
+
+smallthinker:
+  displayName: 本地 SmallThinker（Qwen3-30B-A3B 无审查·按需启动）
+  api: openai-completions
+  baseURL: http://127.0.0.1:8321/v1
+  headers:
+    Authorization: Bearer local-dev-key
+  models:
+    - id: qwen3-30b-a3b-abliterated
+      name: Qwen3 30B A3B Abliterated（本地 SmallThinker·无审查·需先 smallthinker-start）
+      contextWindow: 131072
+      maxTokens: 32768

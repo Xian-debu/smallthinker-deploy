@@ -1,0 +1,26 @@
+# ---- 模型文件（体积大，绝不纳入版本控制）----
+*.gguf
+*.gguf.aria2
+*.safetensors
+*.bin
+
+# ---- 运行时产物 ----
+*.log
+*.pid
+nohup.out
+
+# ---- 构建产物 ----
+build*/
+dist/
+*.o
+*.a
+*.so
+
+# ---- 下载缓存 ----
+models/
+*.part
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
